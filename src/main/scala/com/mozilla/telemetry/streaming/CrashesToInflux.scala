@@ -17,8 +17,6 @@ object CrashesToInflux extends StreamingJobBase {
 
   val kafkaCacheMaxCapacity = 1000
 
-  private val log = org.apache.log4j.LogManager.getLogger("CrashesToInflux")
-
   private[streaming] class Opts(args: Array[String]) extends BaseOpts(args) {
     val raiseOnError: ScallopOption[Boolean] = opt[Boolean](
       "raiseOnError",
@@ -76,6 +74,7 @@ object CrashesToInflux extends StreamingJobBase {
         val influxTags = ListMap(
           "submissionDate" -> metadata.submissionDate,
           "appVersion" -> metadata.appVersion,
+          "appName" -> metadata.appName,
           "displayVersion" -> ping.getDisplayVersion.getOrElse(""),
           "channel" -> metadata.normalizedChannel,
           "country" -> metadata.geoCountry,
@@ -89,8 +88,6 @@ object CrashesToInflux extends StreamingJobBase {
           influxFields.map { case (k, v) => s"$k=$v" }.mkString(" ", ",", "") +
           " " +
           timestamp
-
-        log.info(outputString) // TODO: rm
 
         Array[String](outputString)
       }
@@ -148,8 +145,6 @@ object CrashesToInflux extends StreamingJobBase {
           case doctype if doctype == "crash" => true
         }.where("appUpdateChannel") {
           case appUpdateChannel if opts.acceptedChannels().contains(appUpdateChannel) => true
-        }.where("appName") {
-          case appName if appName == "Firefox" => true
         }.where("submissionDate") {
           case date if date == currentDate => true
         }.records(opts.fileLimit.get)
