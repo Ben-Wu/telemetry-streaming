@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 package com.mozilla.telemetry.streaming
 
+import java.io.Serializable
+
 import com.mozilla.telemetry.heka.Message
 import com.mozilla.telemetry.pings.CrashPing
 import com.mozilla.telemetry.sinks.RawHttpSink
@@ -143,12 +145,11 @@ object CrashesToInflux extends StreamingJobBase {
           case "telemetry" => true
         }.where("docType") {
           case doctype if doctype == "crash" => true
-        }.where("appUpdateChannel") {
-          case appUpdateChannel if opts.acceptedChannels().contains(appUpdateChannel) => true
+        }.where("appUpdateChannel") { // TODO: make channel filtering work
+          case appUpdateChannel if List[String]("beta").contains(appUpdateChannel) => true
         }.where("submissionDate") {
           case date if date == currentDate => true
-        }.records(opts.fileLimit.get)
-        .map(m => Row(m.toByteArray))
+        }.records(opts.fileLimit.get).map(m => Row(m.toByteArray))
 
       val schema = StructType(List(
         StructField("value", BinaryType, nullable = true)
@@ -163,8 +164,8 @@ object CrashesToInflux extends StreamingJobBase {
         .repartition(maxParallelRequests)
         .foreachPartition{ it: Iterator[String] =>
           val httpSink = new RawHttpSink(url, Map())
-          it.foreach{ event =>
-            httpSink.process(event)
+          it.foreach{ data =>
+            httpSink.process(data)
             java.lang.Thread.sleep(minDelay)
           }
         }
