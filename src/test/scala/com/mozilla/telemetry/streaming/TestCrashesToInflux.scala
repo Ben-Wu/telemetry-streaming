@@ -10,7 +10,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import com.mozilla.telemetry.sinks.RawHttpSink
 import org.apache.spark.sql.streaming.StreamingQueryListener
-import org.scalatest.{BeforeAndAfterEach, FlatSpec, Matchers}
+import org.scalatest.{BeforeAndAfterEach, FlatSpec, Matchers, Tag}
 
 class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach with DataFrameSuiteBase {
 
@@ -20,7 +20,6 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
 
   private val wireMockServer = new WireMockServer(wireMockConfig().port(port))
 
-  private val defaultChannels = List[String]("release", "beta", "nightly")
   private val defaultMeasurementName = "crashes"
 
   override def beforeEach(): Unit = {
@@ -41,7 +40,8 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
     val crashes = TestUtils.generateCrashMessages(k)
 
     crashes
-      .flatMap(m => CrashesToInflux.parsePing(m, defaultChannels, defaultMeasurementName))
+      .flatMap(m => CrashesToInflux.parsePing(m, CrashesToInflux.defaultChannels,
+        CrashesToInflux.defaultAppNames, defaultMeasurementName))
       .foreach(httpSink.process)
 
     verify(k, postRequestedFor(urlMatching(path)))
@@ -53,7 +53,7 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
     val k = 12
     val messages = TestUtils.generateCrashMessages(k).map(_.toByteArray).seq
     val parsedPings = CrashesToInflux.getParsedPings(spark.sqlContext.createDataset(messages).toDF,
-      raiseOnError = true, defaultChannels, defaultMeasurementName)
+      raiseOnError = true, defaultMeasurementName)
 
     parsedPings.count() should be (k)
   }
@@ -64,7 +64,7 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
     val k = 10
     val messages = TestUtils.generateMainMessages(k).map(_.toByteArray).seq
     val parsedPings = CrashesToInflux.getParsedPings(spark.sqlContext.createDataset(messages).toDF,
-      raiseOnError = true, defaultChannels, defaultMeasurementName)
+      raiseOnError = true, defaultMeasurementName)
 
     parsedPings.count() should be (0)
   }
@@ -75,7 +75,7 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
     val k = 5
     val messages = TestUtils.generateCrashMessages(k).map(_.toByteArray).seq
     val parsedPings = CrashesToInflux.getParsedPings(spark.sqlContext.createDataset(messages).toDF,
-      raiseOnError = true, List[String]("non-channel"), defaultMeasurementName)
+      raiseOnError = true, defaultMeasurementName, List[String]("non-channel"))
 
     parsedPings.count() should be (0)
   }
@@ -86,7 +86,7 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
     val k = 5
     val messages = TestUtils.generateCrashMessages(k).map(_.toByteArray).seq
     val parsedPings = CrashesToInflux.getParsedPings(spark.sqlContext.createDataset(messages).toDF,
-      raiseOnError = true, defaultChannels, defaultMeasurementName)
+      raiseOnError = true,  defaultMeasurementName)
     parsedPings.collect().count(_.startsWith(defaultMeasurementName)) should be (k)
   }
 
@@ -137,5 +137,22 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
     spark.streams.removeListener(listener)
 
     verify(k, postRequestedFor(urlMatching(path)))
+  }
+
+  // TODO: Tag properly
+  "Crashes to influx" should "send batches of crash pings for each day" taggedAs Tag("SlowAF") in {
+    val requests = 20
+
+    val args = Array(
+      "--from", "20180623",
+      "--to", "20180624",
+      "--url", s"http://$host:$port$path",
+      "--measurementName", defaultMeasurementName,
+      "--fileLimit", "20",
+      "--maxParallelRequests", s"$requests")
+
+    CrashesToInflux.main(args)
+
+    verify(requests * 2, postRequestedFor(urlMatching(path)))
   }
 }

@@ -3,8 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 package com.mozilla.telemetry.streaming
 
-import java.io.Serializable
-
 import com.mozilla.telemetry.heka.Message
 import com.mozilla.telemetry.pings.CrashPing
 import com.mozilla.telemetry.sinks.RawHttpSink
@@ -18,6 +16,9 @@ import scala.collection.immutable.ListMap
 object CrashesToInflux extends StreamingJobBase {
 
   val kafkaCacheMaxCapacity = 1000
+
+  val defaultChannels: List[String] = List[String]("release", "beta", "nightly")
+  val defaultAppNames: List[String] = List[String]("Firefox", "Fennec")
 
   private[streaming] class Opts(args: Array[String]) extends BaseOpts(args) {
     val raiseOnError: ScallopOption[Boolean] = opt[Boolean](
@@ -44,7 +45,12 @@ object CrashesToInflux extends StreamingJobBase {
       "acceptedChannels",
       descr = "Release channels to accept crashes from",
       required = false,
-      default = Some(List[String]("release", "beta", "nightly")))
+      default = Some(defaultChannels))
+    val acceptedAppNames: ScallopOption[List[String]] = opt[List[String]](
+      "acceptedAppNames",
+      descr = "Applications to accept crashes from",
+      required = false,
+      default = Some(defaultAppNames))
     val measurementName: ScallopOption[String] = opt[String](
       "measurementName",
       descr = "Name of measurement in InfluxDB",
@@ -55,7 +61,8 @@ object CrashesToInflux extends StreamingJobBase {
     verify()
   }
 
-  def parsePing(message: Message, channels: List[String], measurementName: String): Array[String] = {
+  def parsePing(message: Message, channels: List[String], appNames: List[String],
+                measurementName: String): Array[String] = {
     val fields = message.fieldsAsMap
 
     if (!fields.get("docType").contains("crash")) {
@@ -64,13 +71,13 @@ object CrashesToInflux extends StreamingJobBase {
       val ping = CrashPing(message)
       val metadata = ping.meta
 
-      if (!channels.contains(metadata.normalizedChannel)) {
+      if (!channels.contains(metadata.normalizedChannel) || !appNames.contains(metadata.appName)) {
         Array[String]()
       } else {
         val timestamp = metadata.Timestamp
 
         val influxFields = ListMap(
-          "buildId" -> ping.getNormalizedBuildId.getOrElse("")
+          "buildId" -> ping.getNormalizedBuildId.getOrElse(metadata.appBuildId)
         )
 
         val influxTags = ListMap(
@@ -96,13 +103,14 @@ object CrashesToInflux extends StreamingJobBase {
     }
   }
 
-  def getParsedPings(pings: DataFrame, raiseOnError: Boolean, channels: List[String],
-                    measurementName: String): Dataset[String] = {
+  def getParsedPings(pings: DataFrame, raiseOnError: Boolean, measurementName: String,
+                     channels: List[String] = defaultChannels,
+                     appNames: List[String] = defaultAppNames): Dataset[String] = {
     import pings.sparkSession.implicits._
 
     pings.flatMap( v => {
       try {
-        parsePing(Message.parseFrom(v.get(0).asInstanceOf[Array[Byte]]), channels, measurementName)
+        parsePing(Message.parseFrom(v.get(0).asInstanceOf[Array[Byte]]), channels, appNames, measurementName)
       } catch {
         case _: Throwable if !raiseOnError => Array[String]()
       }
@@ -124,7 +132,7 @@ object CrashesToInflux extends StreamingJobBase {
       .load()
 
     getParsedPings(pings.select("value"), opts.raiseOnError(),
-      opts.acceptedChannels(), opts.measurementName())
+      opts.measurementName(), opts.acceptedChannels(), opts.acceptedAppNames())
       .writeStream
       .queryName(QueryName)
       .foreach(httpSink)
@@ -139,7 +147,6 @@ object CrashesToInflux extends StreamingJobBase {
 
     datesBetween(opts.from(), opts.to.get).foreach { currentDate =>
       val dataset = com.mozilla.telemetry.heka.Dataset("telemetry")
-
       val pings = dataset
         .where("sourceName") {
           case "telemetry" => true
@@ -147,6 +154,8 @@ object CrashesToInflux extends StreamingJobBase {
           case doctype if doctype == "crash" => true
         }.where("appUpdateChannel") { // TODO: make channel filtering work
           case appUpdateChannel if List[String]("beta").contains(appUpdateChannel) => true
+        }.where("appName") { // TODO: make app filtering work
+          case appName if List[String]("Firefox").contains(appName) => true
         }.where("submissionDate") {
           case date if date == currentDate => true
         }.records(opts.fileLimit.get).map(m => Row(m.toByteArray))
@@ -160,17 +169,14 @@ object CrashesToInflux extends StreamingJobBase {
       val url = opts.url()
 
       getParsedPings(pingsDataFrame, opts.raiseOnError(),
-        opts.acceptedChannels(), opts.measurementName())
+        opts.measurementName(), opts.acceptedChannels(), opts.acceptedAppNames())
         .repartition(maxParallelRequests)
         .foreachPartition{ it: Iterator[String] =>
           val httpSink = new RawHttpSink(url, Map())
-          it.foreach{ data =>
-            httpSink.process(data)
-            java.lang.Thread.sleep(minDelay)
-          }
+          val data = it.mkString("\n")
+          httpSink.process(data)
         }
     }
-
     spark.stop()
   }
 
