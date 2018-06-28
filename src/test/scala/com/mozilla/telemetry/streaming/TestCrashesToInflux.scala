@@ -139,7 +139,7 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
     verify(k, postRequestedFor(urlMatching(path)))
   }
 
-  // TODO: Tag properly
+  /*
   "Crashes to influx" should "send batches of crash pings for each day" taggedAs Tag("SlowAF") in {
     val requests = 20
 
@@ -155,4 +155,5 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
 
     verify(requests * 2, postRequestedFor(urlMatching(path)))
   }
+  */
 }
