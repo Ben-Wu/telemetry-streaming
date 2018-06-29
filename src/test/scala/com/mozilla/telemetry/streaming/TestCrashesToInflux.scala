@@ -37,7 +37,7 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
     val k = 23
 
     val httpSink = new RawHttpSink(s"http://$host:$port$path", Map())
-    val crashes = TestUtils.generateCrashMessages(k)
+    val crashes = TestUtils.generateCrashMessages(k, customPayload = Some(StackTraceUtils.sampleStackTrace))
 
     crashes
       .flatMap(m => CrashesToInflux.parsePing(m, CrashesToInflux.defaultChannels,
