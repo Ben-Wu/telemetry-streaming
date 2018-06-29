@@ -5,7 +5,7 @@ package com.mozilla.telemetry.pings
 
 import com.mozilla.telemetry.heka.Message
 import com.mozilla.telemetry.pings.Ping.messageToPing
-import org.json4s.DefaultFormats
+import org.json4s.{DefaultFormats, JValue}
 
 case class CrashPing(application: Application,
                      clientId: Option[String],
@@ -61,7 +61,32 @@ case class CrashPayload(crashDate: String,
                         processType: Option[String],
                         hasCrashEnvironment: Option[Boolean],
                         metadata: CrashMetadata,
-                        version: Option[Int])
+                        version: Option[Int],
+                        stackTraces: JValue)
 
 case class CrashMetadata(StartupCrash: Option[String],
                          ipc_channel_error: Option[String])
+
+// TODO: Might make more sense to move to "StackTraceUtils"
+
+case class StackTraces(crash_info: Option[CrashInfo],
+                       modules: Option[List[CrashModule]],
+                       status: Option[String],
+                       main_module: Option[Int],
+                       threads: Option[List[Map[String, List[CrashFrame]]]])
+
+case class CrashInfo(address: Option[String],
+                     crashing_thread: Option[Int],
+                     `type`: Option[String])
+
+case class CrashModule(base_addr: Option[String],
+                       end_addr: Option[String],
+                       version: Option[String],
+                       debug_file: Option[String],
+                       filename: Option[String],
+                       code_id: Option[String],
+                       debug_id: Option[String])
+
+case class CrashFrame(ip: Option[String],
+                      module_index: Option[Int],
+                      trust: Option[String])

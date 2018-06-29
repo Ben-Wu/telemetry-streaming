@@ -10,7 +10,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import com.mozilla.telemetry.sinks.RawHttpSink
 import org.apache.spark.sql.streaming.StreamingQueryListener
-import org.scalatest.{BeforeAndAfterEach, FlatSpec, Matchers, Tag}
+import org.scalatest.{BeforeAndAfterEach, FlatSpec, Matchers}
 
 class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach with DataFrameSuiteBase {
 
@@ -37,7 +37,7 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
     val k = 23
 
     val httpSink = new RawHttpSink(s"http://$host:$port$path", Map())
-    val crashes = TestUtils.generateCrashMessages(k)
+    val crashes = TestUtils.generateCrashMessages(k, customPayload = Some(StackTraceUtils.sampleStackTrace))
 
     crashes
       .flatMap(m => CrashesToInflux.parsePing(m, CrashesToInflux.defaultChannels,
