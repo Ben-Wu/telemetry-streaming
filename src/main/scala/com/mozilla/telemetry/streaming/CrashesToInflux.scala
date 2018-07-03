@@ -249,6 +249,8 @@ object CrashesToInflux extends StreamingJobBase {
 
       implicit val formats = org.json4s.DefaultFormats
 
+      // TODO: dedup
+
       val requestBody = Map[String, Any](
         "stacks" -> stacks,
         "memoryMap" -> memoryMap,
@@ -278,47 +280,6 @@ object CrashesToInflux extends StreamingJobBase {
     }
 
     getThreadsToSymbolicate(frameList(0), modules, 0, 0)
-
-    /*for ((frames, threadIdx) <- frameList.zipWithIndex) {
-      if (threadIdx == 0 || threadIdx == crashingThread) {
-
-        for (frame <- frames) {
-          if (frame.ip.isEmpty) {
-            throw new Exception("missing ip")
-          }
-
-          val ip = BigInt(frame.ip.get.substring(2), 16)
-
-          val moduleIdx = frame.module_index.getOrElse(-1)
-          if (moduleIdx < 0) {
-            // continue
-          } else if (moduleIdx > modules.length) {
-            throw new Exception("module index out of range")
-          }
-
-          val module = modules(moduleIdx)
-
-          if (module.base_addr.isEmpty) {
-            throw new Exception("base addr not in module")
-          }
-
-          val moduleOffset = ip - BigInt(module.base_addr.get.substring(2), 16)
-
-          if (module.debug_file.isDefined && module.debug_id.isDefined) {
-            val symModule = SymModule(module.debug_file.get, module.debug_id.get)
-            var moduleIdx2 = modulesToSymbolicate.indexOf(symModule)
-            if (moduleIdx2 == -1) {
-              modulesToSymbolicate += symModule
-              moduleIdx2 = modulesToSymbolicate.indexOf(symModule)
-            }
-            Array[SymThread](SymThread(moduleIdx2, moduleOffset))
-          } else {
-            Array[SymThread]()
-          }
-        }
-
-      }
-    }*/
     ""
   }
 }
