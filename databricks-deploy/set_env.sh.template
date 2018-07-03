@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+export KAFKA_BROKER=
+export IAM_ROLE=
+export SSH_PUBLIC_KEY=
+export URL=
+export FROM=
+export TO=
