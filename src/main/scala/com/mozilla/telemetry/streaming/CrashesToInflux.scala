@@ -14,6 +14,8 @@ import org.json4s.jackson.Serialization
 import org.rogach.scallop.ScallopOption
 
 import scala.collection.immutable.ListMap
+import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 object CrashesToInflux extends StreamingJobBase {
 
@@ -199,11 +201,11 @@ object CrashesToInflux extends StreamingJobBase {
     process(opts)
   }
 
-  case class SymModule(debugFile: String, debugId: String)
+  // TODO: move to util class
 
-  case class SymThread(index: BigInt, offset: BigInt, module: SymModule)
+  case class SymFrame(offset: BigInt, debugFile: String, debugId: String)
 
-  def getFramesToSymbolicate(frame: CrashFrame, idx: Int, modules: List[CrashModule]): Array[SymThread] = {
+  def createSymbolicationFrame(frame: CrashFrame, modules: List[CrashModule]): Array[SymFrame] = {
     if (frame.ip.isEmpty) {
       throw new Exception("missing ip")
     }
@@ -223,37 +225,21 @@ object CrashesToInflux extends StreamingJobBase {
       val moduleOffset = ip - BigInt(module.base_addr.get.substring(2), 16)
 
       if (module.debug_file.isDefined && module.debug_id.isDefined) {
-        val symModule = SymModule(module.debug_file.get, module.debug_id.get)
-        Array[SymThread](SymThread(idx, moduleOffset, symModule))
+        Array[SymFrame](SymFrame(moduleOffset, module.debug_file.get, module.debug_id.get))
       } else {
-        Array[SymThread]()
+        Array[SymFrame]()
       }
     } else {
-      Array[SymThread]()
+      Array[SymFrame]()
     }
   }
 
-  def getThreadsToSymbolicate(frames: List[CrashFrame], modules: List[CrashModule], threadIdx: Int,
-                              crashingThread: Int): Unit = {
+  def getFramesToSymbolicate(frames: List[CrashFrame], modules: List[CrashModule], threadIdx: Int,
+                             crashingThread: Int): List[SymFrame] = {
     if (threadIdx == 0 || threadIdx == crashingThread) {
-      val threadsToSymbolicate = frames.zipWithIndex.flatMap({
-        case (frame, i) => getFramesToSymbolicate(frame, i, modules)
-      })
-
-      val stacks = threadsToSymbolicate.map(t => List[BigInt](t.index, t.offset))
-      val memoryMap = threadsToSymbolicate.map(t => List[String](t.module.debugFile, t.module.debugId))
-
-      implicit val formats = org.json4s.DefaultFormats
-
-      // TODO: dedup
-
-      val requestBody = Map[String, Any](
-        "stacks" -> stacks,
-        "memoryMap" -> memoryMap,
-        "version" -> 5
-      )
-
-      println(Serialization.write(requestBody))
+      frames.flatMap(createSymbolicationFrame(_, modules))
+    } else {
+      List[SymFrame]()
     }
   }
 
@@ -275,7 +261,34 @@ object CrashesToInflux extends StreamingJobBase {
       throw new Exception("crashing thread out of range")
     }
 
-    getThreadsToSymbolicate(frameList(0), modules, 0, 0)
-    ""
+    val framesToSymbolicate = frameList.flatMap(
+      getFramesToSymbolicate(_, modules, 0, 0)
+    )
+
+    // TODO: can we do this with no side effects
+    // stacks is a list of tuples of (index of associated item in memoryMap, module offset)
+    val stacks = ListBuffer[List[Any]]()
+    // memoryMap is list of tuples of (debug file, debug id)
+    val memoryMap = ListBuffer[List[String]]()
+
+    val indexMap = mutable.HashMap[String, Int]()
+
+    for (frame <- framesToSymbolicate) {
+      if (!indexMap.contains(frame.debugId)) {
+        memoryMap.append(List[String](frame.debugFile, frame.debugId))
+      }
+      val index = indexMap.getOrElseUpdate(frame.debugId, memoryMap.length - 1)
+      stacks.append(List(index, frame.offset))
+    }
+
+    val requestBody = Map[String, Any](
+      "stacks" -> stacks,
+      "memoryMap" -> memoryMap,
+      "version" -> 5
+    )
+    implicit val formats = org.json4s.DefaultFormats
+    val s = Serialization.write(requestBody)
+
+    s
   }
 }
