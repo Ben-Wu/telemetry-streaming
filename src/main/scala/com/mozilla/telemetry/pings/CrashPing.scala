@@ -68,6 +68,7 @@ case class CrashMetadata(StartupCrash: Option[String],
                          ipc_channel_error: Option[String])
 
 // TODO: Might make more sense to move to "StackTraceUtils"
+// TODO: Make some fields mandatory
 
 case class StackTraces(crash_info: Option[CrashInfo],
                        modules: Option[List[CrashModule]],

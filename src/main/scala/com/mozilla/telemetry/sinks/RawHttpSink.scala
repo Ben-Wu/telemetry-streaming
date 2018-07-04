@@ -11,7 +11,7 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 // TODO: Remove and use generalized HttpSink instead
-class RawHttpSink[String](url: String, data: Map[String, String], maxAttempts: Int = 5, defaultDelay: Int = 500, connectionTimeout: Int = 2000)
+class RawHttpSink(url: String, data: Map[String, String], maxAttempts: Int = 5, defaultDelay: Int = 500, connectionTimeout: Int = 2000)
   extends HttpSink[String](url, data, maxAttempts, defaultDelay, connectionTimeout) {
 
   override def process(event: String): Unit = {
@@ -21,15 +21,24 @@ class RawHttpSink[String](url: String, data: Map[String, String], maxAttempts: I
         .timeout(connTimeoutMs = connectionTimeout, readTimeoutMs = ReadTimeout))
   }
 
+  def processWithResponse(data: String): String = {
+    attempt(
+      Http(url.toString)
+        .postData(data.toString)
+        .timeout(connTimeoutMs = connectionTimeout, readTimeoutMs = ReadTimeout))
+  }
+
   private def backoff(tries: Int): Long = (scala.math.pow(2, tries) - 1).toLong * defaultDelay
 
   @tailrec
-  private def attempt(request: HttpRequest, tries: Int = 0): Unit = {
+  private def attempt(request: HttpRequest, tries: Int = 0): String = {
     if(tries > 0) { // minor optimization
       java.lang.Thread.sleep(backoff(tries))
     }
 
-    val code = Try(request.asString.code) match {
+    val response = request.asString
+
+    val code = Try(response.code) match {
       case Success(c) => c
       case Failure(e: java.net.SocketTimeoutException) => TimeoutPseudoCode
       case Failure(e) if NonFatal(e) => {
@@ -39,12 +48,13 @@ class RawHttpSink[String](url: String, data: Map[String, String], maxAttempts: I
     }
 
     (code, tries + 1 == maxAttempts) match {
-      case (OK, _) =>
-      case (ErrorPseudoCode, _) =>
+      case (OK, _) => response.body
+      case (ErrorPseudoCode, _) => ""
       case (c, false) if RetryCodes.contains(c) => attempt(request, tries + 1)
       case (c, _) => {
         val url = request.url + "?" + request.params.map{ case(k, v) => s"$k=$v" }.mkString("&")
         log.warn(s"Failed request: $url, last status code: $c")
+        ""
       }
     }
   }

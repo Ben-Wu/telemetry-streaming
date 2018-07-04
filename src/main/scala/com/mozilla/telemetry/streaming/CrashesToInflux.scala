@@ -4,18 +4,22 @@
 package com.mozilla.telemetry.streaming
 
 import com.mozilla.telemetry.heka.Message
-import com.mozilla.telemetry.pings.{CrashFrame, CrashModule, CrashPing, StackTraces}
+import com.mozilla.telemetry.pings._
 import com.mozilla.telemetry.sinks.RawHttpSink
 import com.mozilla.telemetry.streaming.StreamingJobBase.TelemetryKafkaTopic
 import org.apache.spark.sql.types.{BinaryType, StructField, StructType}
 import org.apache.spark.sql._
 import org.json4s.DefaultFormats
+import org.json4s._
+import org.json4s.jackson.JsonMethods._
 import org.json4s.jackson.Serialization
 import org.rogach.scallop.ScallopOption
 
 import scala.collection.immutable.ListMap
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
+
+import sys.process._
 
 object CrashesToInflux extends StreamingJobBase {
 
@@ -75,14 +79,7 @@ object CrashesToInflux extends StreamingJobBase {
       } else {
         val timestamp = metadata.Timestamp
 
-        if (ping.payload.stackTraces.values == None) {
-
-        } else {
-          implicit val formats = DefaultFormats
-          val stackTrace = ping.payload.stackTraces.extract[StackTraces]
-
-          val parsedStackTraces = parseStackTrace(stackTrace)
-        }
+        val crashSignature = getCrashSignature(ping.payload)
 
         val influxFields = ListMap(
           "buildId" -> ping.getNormalizedBuildId.getOrElse(metadata.appBuildId)
@@ -97,7 +94,8 @@ object CrashesToInflux extends StreamingJobBase {
           "country" -> metadata.geoCountry,
           "osName" -> metadata.os.getOrElse(""),
           "osVersion" -> ping.getOsVersion.getOrElse(""),
-          "architecture" -> ping.getArchitecture.getOrElse("")
+          "architecture" -> ping.getArchitecture.getOrElse(""),
+          "crashSignature" -> crashSignature
         )
 
         val outputString = measurementName +
@@ -203,6 +201,51 @@ object CrashesToInflux extends StreamingJobBase {
 
   // TODO: move to util class
 
+  case class SymbolicatedReponse(results: List[SymbolicatedResult])
+
+  case class SymbolicatedResult(stacks: List[JValue])
+
+  case class CrashSignature(notes: List[String], proto_signature: String, signature: String)
+
+  def getCrashSignature(payload: CrashPayload): String = {
+    if (payload.stackTraces.values == None) {
+      ""
+    } else {
+      implicit val formats = DefaultFormats
+      val stackTrace = payload.stackTraces.extract[StackTraces]
+
+      try {
+        val parsedStackTraces = parseStackTrace(stackTrace)
+
+        val httpSink = new RawHttpSink("https://symbols.mozilla.org/symbolicate/v5", Map())
+
+        val response = httpSink.processWithResponse(Serialization.write(parsedStackTraces))
+
+        if (response.isEmpty) {
+          ""
+        } else {
+          val responseSerialized = parse(response).extract[SymbolicatedReponse]
+
+          // TODO: Error checking
+
+          val crashingThread = stackTrace.crash_info.get.crashing_thread.get
+
+          val signifyBody = Map[String, Any](
+            "crashing_thread" -> crashingThread,
+            "threads" -> List(Map("frames" -> responseSerialized.results.head.stacks.head))
+          )
+
+          val result = s"echo ${Serialization.write(signifyBody)}" #| "signify" !!
+
+          val crashSignature = parse(result).extract[CrashSignature]
+          crashSignature.signature
+        }
+      } catch {
+        case e: Exception => "" // TODO: Don't use base Exception
+      }
+    }
+  }
+
   case class SymFrame(offset: BigInt, debugFile: String, debugId: String)
 
   def createSymbolicationFrame(frame: CrashFrame, modules: List[CrashModule]): Array[SymFrame] = {
@@ -243,7 +286,7 @@ object CrashesToInflux extends StreamingJobBase {
     }
   }
 
-  def parseStackTrace(stackTraces: StackTraces): String = {
+  def parseStackTrace(stackTraces: StackTraces): Map[String, Any] = {
     if (stackTraces.threads.isEmpty || stackTraces.modules.isEmpty
       || stackTraces.crash_info.isEmpty) {
       throw new Exception("'threads', 'modules', and 'crash_info' must be in stack trace")
@@ -281,14 +324,10 @@ object CrashesToInflux extends StreamingJobBase {
       stacks.append(List(index, frame.offset))
     }
 
-    val requestBody = Map[String, Any](
-      "stacks" -> stacks,
+    Map[String, Any](
+      "stacks" -> List(stacks),
       "memoryMap" -> memoryMap,
       "version" -> 5
     )
-    implicit val formats = org.json4s.DefaultFormats
-    val s = Serialization.write(requestBody)
-
-    s
   }
 }
