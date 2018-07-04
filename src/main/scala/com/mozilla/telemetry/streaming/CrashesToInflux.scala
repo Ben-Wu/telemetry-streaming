@@ -123,8 +123,12 @@ object CrashesToInflux extends StreamingJobBase {
     import pings.sparkSession.implicits._
 
     pings.flatMap( v =>
+      try {
         parsePing(Message.parseFrom(v.get(0).asInstanceOf[Array[Byte]]),
           channels, appNames, measurementName, usingDatabricks, getSignature)
+      } catch {
+        case _: Throwable if !raiseOnError => Array[String]()
+      }
     ).as[String]
   }
 
@@ -258,7 +262,7 @@ object CrashesToInflux extends StreamingJobBase {
           crashSignature.signature
         }
       } catch {
-        case e: Exception => "" // TODO: Don't use base Exception
+        case _: Throwable => "" // TODO: Don't use base Exception
       }
     }
   }
