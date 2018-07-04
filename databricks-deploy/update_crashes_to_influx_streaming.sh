@@ -3,7 +3,6 @@ set -eux pipefail
 
 source "$(dirname "$0")"/set_env.sh
 
-
 create_job_json() {
 cat << EOF
 {
