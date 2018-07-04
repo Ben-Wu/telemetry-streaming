@@ -101,6 +101,7 @@ object CrashesToInflux extends StreamingJobBase {
           "osName" -> metadata.os.getOrElse(""),
           "osVersion" -> ping.getOsVersion.getOrElse(""),
           "architecture" -> ping.getArchitecture.getOrElse(""),
+          "processType" -> ping.payload.processType.getOrElse("main"),
           "crashSignature" -> crashSignature
         )
 
