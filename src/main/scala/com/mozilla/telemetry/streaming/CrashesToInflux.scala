@@ -131,7 +131,7 @@ object CrashesToInflux extends StreamingJobBase {
   def sendStreamCrashes(spark: SparkSession, opts: Opts): Unit = {
     val httpSink = new RawHttpSink(opts.url(), Map())
 
-    val usingDatabricks = !spark.conf.get("spark.home").startsWith("/databricks")
+    val usingDatabricks = spark.conf.getOption("spark.home").getOrElse("").startsWith("/databricks")
 
     val pings = spark
       .readStream
@@ -159,7 +159,7 @@ object CrashesToInflux extends StreamingJobBase {
 
     implicit val sc = spark.sparkContext
 
-    val usingDatabricks = !spark.conf.get("spark.home").startsWith("/databricks")
+    val usingDatabricks = spark.conf.getOption("spark.home").getOrElse("").startsWith("/databricks")
 
     datesBetween(opts.from(), opts.to.get).foreach { currentDate =>
       val dataset = com.mozilla.telemetry.heka.Dataset("telemetry")
