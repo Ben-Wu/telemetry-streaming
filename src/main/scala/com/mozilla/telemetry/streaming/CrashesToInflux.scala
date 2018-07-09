@@ -237,11 +237,14 @@ object CrashesToInflux extends StreamingJobBase {
 
         val parsedStackTraces = parseStackTrace(stackTrace)
 
-        val httpSink = new RawHttpSink("https://symbols.mozilla.org/symbolicate/v5", Map())
+        val httpSink = new RawHttpSink(
+          s"http://ec2-52-2-118-100.compute-1.amazonaws.com:5000/symbols/${stackTrace.crash_info.get.crashing_thread.get}", Map())
 
         val response = httpSink.processWithResponse(Serialization.write(parsedStackTraces))
 
-        if (response.isEmpty) {
+        response
+
+        /*if (response.isEmpty) {
           ""
         } else {
           val responseSerialized = parse(response).extract[SymbolicatedReponse]
@@ -260,7 +263,7 @@ object CrashesToInflux extends StreamingJobBase {
 
           val crashSignature = parse(result).extract[CrashSignature]
           crashSignature.signature.replace(" ", "\\ ")
-        }
+        }*/
       } catch {
         case _: Throwable => "" // TODO: Don't use base Exception
       }
@@ -345,9 +348,8 @@ object CrashesToInflux extends StreamingJobBase {
       stacks.append(List(index, frame.offset))
     }
 
-    // TODO: remove sorting when Tecken is fixed
     Map[String, Any](
-      "stacks" -> List(stacks.sortWith(_(0).asInstanceOf[Int] < _(0).asInstanceOf[Int])), // list of stacks need to be wrapped in a list
+      "stacks" -> List(stacks), // list of stacks need to be wrapped in a list
       "memoryMap" -> memoryMap,
       "version" -> 5
     )
