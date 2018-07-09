@@ -101,14 +101,13 @@ object CrashesToInflux extends StreamingJobBase {
           "osName" -> metadata.os.getOrElse(""),
           "osVersion" -> ping.getOsVersion.getOrElse(""),
           "architecture" -> ping.getArchitecture.getOrElse(""),
-          "processType" -> ping.payload.processType.getOrElse("main"),
-          "crashSignature" -> crashSignature
+          "processType" -> ping.payload.processType.getOrElse("main")
         )
 
         val outputString = measurementName +
           influxTags.map { case (k, v) => s"$k=$v" }.mkString(",", ",", "") +
-          influxFields.map { case (k, v) => s"$k=$v" }.mkString(" ", ",", "") +
-          " " +
+          (if (crashSignature.nonEmpty) s",crashSignature=$crashSignature" else "")  +
+          influxFields.map { case (k, v) => s"$k=$v" }.mkString(" ", ",", " ") +
           timestamp
 
         Array[String](outputString)
@@ -260,7 +259,7 @@ object CrashesToInflux extends StreamingJobBase {
           val result = s"echo ${Serialization.write(signifyBody)}" #| commandPath !!
 
           val crashSignature = parse(result).extract[CrashSignature]
-          crashSignature.signature
+          crashSignature.signature.replace(" ", "\\ ")
         }
       } catch {
         case _: Throwable => "" // TODO: Don't use base Exception
