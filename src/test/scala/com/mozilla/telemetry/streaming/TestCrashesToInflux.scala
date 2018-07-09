@@ -48,7 +48,7 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
     verify(k, postRequestedFor(urlMatching(path)))
   }
 
-  /*"Parse ping" should "get crash signature" in {
+  "Parse ping" should "get crash signature" in {
     val k = 23
 
     val httpSink = new RawHttpSink(s"http://$host:$port$path", Map())
@@ -57,11 +57,11 @@ class TestCrashesToInflux extends FlatSpec with Matchers with BeforeAndAfterEach
     crashes
       .flatMap(m => CrashesToInflux.parsePing(m, CrashesToInflux.defaultChannels,
         CrashesToInflux.defaultAppNames, defaultMeasurementName,
-        usingDatabricks = false, getSignature = false))
+        usingDatabricks = false, getSignature = true))
       .foreach(httpSink.process)
 
     verify(k, postRequestedFor(urlMatching(path)))
-  }*/
+  }
 
   "Message parser" should "generate 1 crash to send for each valid crash ping" in {
     import spark.implicits._

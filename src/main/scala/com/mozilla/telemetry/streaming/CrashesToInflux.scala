@@ -232,10 +232,10 @@ object CrashesToInflux extends StreamingJobBase {
     if (payload.stackTraces.values == None) {
       ""
     } else {
-      implicit val formats = DefaultFormats
-      val stackTrace = payload.stackTraces.extract[StackTraces]
-
       try {
+        implicit val formats = DefaultFormats
+        val stackTrace = payload.stackTraces.extract[StackTraces]
+
         val parsedStackTraces = parseStackTrace(stackTrace)
 
         val httpSink = new RawHttpSink("https://symbols.mozilla.org/symbolicate/v5", Map())
@@ -346,8 +346,9 @@ object CrashesToInflux extends StreamingJobBase {
       stacks.append(List(index, frame.offset))
     }
 
+    // TODO: remove sorting when Tecken is fixed
     Map[String, Any](
-      "stacks" -> List(stacks),
+      "stacks" -> List(stacks.sortWith(_(0).asInstanceOf[Int] < _(0).asInstanceOf[Int])), // list of stacks need to be wrapped in a list
       "memoryMap" -> memoryMap,
       "version" -> 5
     )
