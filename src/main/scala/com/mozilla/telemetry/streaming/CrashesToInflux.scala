@@ -242,7 +242,7 @@ object CrashesToInflux extends StreamingJobBase {
 
         val response = httpSink.processWithResponse(Serialization.write(parsedStackTraces))
 
-        response
+        response.replace(" ", "\\ ")
 
         /*if (response.isEmpty) {
           ""
