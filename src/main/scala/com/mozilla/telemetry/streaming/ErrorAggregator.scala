@@ -13,7 +13,6 @@ import org.apache.spark.sql.functions.{col, sum, window}
 import org.apache.spark.sql.types.{BinaryType, StructField, StructType}
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.joda.time.{DateTime, Days, LocalDateTime, format}
-import org.json4s._
 import org.rogach.scallop.{ScallopConf, ScallopOption}
 
 object ErrorAggregator {
@@ -244,8 +243,6 @@ object ErrorAggregator {
   }
 
   def parsePing(dimensions: StructType, statsSchema: StructType, countHistograms: StructType)(message: Message): Array[Row] = {
-    implicit val formats = DefaultFormats
-
     val fields = message.fieldsAsMap
     val docType = fields.getOrElse("docType", "").asInstanceOf[String]
     if (!allowedDocTypes.contains(docType)) {

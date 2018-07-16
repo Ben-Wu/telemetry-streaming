@@ -18,6 +18,8 @@ import org.rogach.scallop.ScallopOption
 import scala.collection.immutable.ListMap
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
+import scala.language.postfixOps
+
 
 import sys.process._
 
@@ -229,7 +231,7 @@ object CrashesToInflux extends StreamingJobBase {
 
   def getCrashSignature(payload: CrashPayload, usingDatabricks: Boolean): String = {
     if (payload.stackTraces.values == None) {
-      ""
+      "None"
     } else {
       try {
         implicit val formats = DefaultFormats
@@ -237,21 +239,18 @@ object CrashesToInflux extends StreamingJobBase {
 
         val parsedStackTraces = parseStackTrace(stackTrace)
 
-        val httpSink = new RawHttpSink(
-          s"http://ec2-52-2-118-100.compute-1.amazonaws.com:5000/symbols/${stackTrace.crash_info.get.crashing_thread.get}", Map())
+        val httpSink = new RawHttpSink("https://symbols.mozilla.org/symbolicate/v5", Map())
 
         val response = httpSink.processWithResponse(Serialization.write(parsedStackTraces))
 
-        response.replace(" ", "\\ ")
-
-        /*if (response.isEmpty) {
+        if (response.isEmpty) {
           ""
         } else {
           val responseSerialized = parse(response).extract[SymbolicatedReponse]
 
           // TODO: Error checking
 
-          val crashingThread = stackTrace.crash_info.get.crashing_thread.get
+          val crashingThread = stackTrace.crash_info.get.crashing_thread.getOrElse(0)
 
           val signifyBody = Map[String, Any](
             "crashing_thread" -> crashingThread,
@@ -263,9 +262,9 @@ object CrashesToInflux extends StreamingJobBase {
 
           val crashSignature = parse(result).extract[CrashSignature]
           crashSignature.signature.replace(" ", "\\ ")
-        }*/
+        }
       } catch {
-        case _: Throwable => "" // TODO: Don't use base Exception
+        case e: Throwable => e.getMessage // TODO: Don't use base Exception
       }
     }
   }
