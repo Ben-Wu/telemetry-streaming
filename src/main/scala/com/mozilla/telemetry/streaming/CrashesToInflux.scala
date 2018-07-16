@@ -104,7 +104,7 @@ object CrashesToInflux extends StreamingJobBase {
           "osVersion" -> ping.getOsVersion.getOrElse(""),
           "architecture" -> ping.getArchitecture.getOrElse(""),
           "processType" -> ping.payload.processType.getOrElse("main")
-        )
+        ).filter{case (k, v) => v.nonEmpty}
 
         val outputString = measurementName +
           influxTags.map { case (k, v) => s"$k=$v" }.mkString(",", ",", "") +
@@ -231,7 +231,7 @@ object CrashesToInflux extends StreamingJobBase {
 
   def getCrashSignature(payload: CrashPayload, usingDatabricks: Boolean): String = {
     if (payload.stackTraces.values == None) {
-      "None"
+      ""
     } else {
       try {
         implicit val formats = DefaultFormats
@@ -248,8 +248,6 @@ object CrashesToInflux extends StreamingJobBase {
         } else {
           val responseSerialized = parse(response).extract[SymbolicatedReponse]
 
-          // TODO: Error checking
-
           val crashingThread = stackTrace.crash_info.get.crashing_thread.getOrElse(0)
 
           val signifyBody = Map[String, Any](
@@ -264,7 +262,7 @@ object CrashesToInflux extends StreamingJobBase {
           crashSignature.signature.replace(" ", "\\ ")
         }
       } catch {
-        case e: Throwable => e.getMessage // TODO: Don't use base Exception
+        case e: Throwable => "" // TODO: Don't use base Exception
       }
     }
   }
