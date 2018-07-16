@@ -23,7 +23,7 @@ class HttpSink[String](url: String, data: Map[String, String], maxAttempts: Int 
   val OK = 200
 
   // timeouts in ms
-  val ReadTimeout = 5000
+  val ReadTimeout = 10000
 
   @transient lazy val log = org.apache.log4j.LogManager.getLogger("HttpSinkLogger")
 
