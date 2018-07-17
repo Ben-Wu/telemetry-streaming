@@ -227,7 +227,7 @@ object CrashesToInflux extends StreamingJobBase {
 
   case class SymbolicatedResult(stacks: List[JValue])
 
-  case class CrashSignature(notes: List[String], proto_signature: String, signature: String)
+  case class CrashSignature(notes: Option[List[String]], proto_signature: Option[String], signature: String)
 
   def getCrashSignature(payload: CrashPayload, usingDatabricks: Boolean): String = {
     if (payload.stackTraces.values == None) {
