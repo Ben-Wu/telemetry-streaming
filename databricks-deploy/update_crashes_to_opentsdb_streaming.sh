@@ -40,7 +40,7 @@ cat << EOF
         "on_failure": ["bewu@mozilla.com"]
     },
     "spark_jar_task": {
-        "main_class_name": "com.mozilla.telemetry.streaming.CrashesToInflux",
+        "main_class_name": "com.mozilla.telemetry.streaming.CrashesToOpenTsdb",
         "parameters": ["--kafkaBroker","${KAFKA_BROKER}",
                        "--url","${URL}",
                        "--measurementName","crashstream"]
